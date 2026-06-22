@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pokladní Inventura</title>
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --text: #0f172a;
+            --border: #e2e8f0;
+            --success-bg: #dcfce7;
+            --success-text: #166534;
+            --highlight: #16a34a;
+        }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 2rem;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: var(--surface);
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 1rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        .total-box {
+            background: var(--success-bg);
+            color: var(--success-text);
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            font-size: 1.4rem;
+            font-weight: bold;
+            box-shadow: inset 0 0 0 1px rgba(22, 101, 52, 0.2);
+        }
+        .controls {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        input[type="file"] {
+            padding: 0.5rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: #f1f5f9;
+            font-size: 1rem;
+            cursor: pointer;
+        }
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        button:hover { opacity: 0.9; }
+        
+        .table-wrapper {
+            overflow-x: auto;
+            margin-top: 1rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+        th {
+            background-color: #f1f5f9;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .qty-input {
+            width: 90px;
+            padding: 0.5rem;
+            border: 2px solid var(--primary);
+            border-radius: 6px;
+            font-size: 1rem;
+            text-align: center;
+            font-weight: bold;
+            background-color: #fff;
+        }
+        .qty-input:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+        }
+
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type=number] {
+            -moz-appearance: textfield;
+            appearance: textfield;
+        }
+
+        .text-positive { color: var(--highlight); font-weight: bold; }
+        .bg-input-cell { background-color: #eff6ff; text-align: center; width: 120px; }
+        .hidden { display: none; }
+        .note-cell { font-size: 0.85rem; color: #64748b; max-width: 150px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1>Pokladní Inventura</h1>
+        <div class="total-box">
+            Celková očekávaná tržba: <span id="total-revenue">0</span> Kč
+        </div>
+    </div>
+
+    <div class="controls">
+        <input type="file" id="file-upload" accept=".csv, .xlsx, .xls" />
+        <button id="export-btn" class="hidden" onclick="exportData()">Uložit inventuru a stáhnout Excel</button>
+    </div>
+
+    <div class="table-wrapper">
+        <table id="inventory-table" class="hidden">
+            <thead id="table-head">
+                </thead>
+            <tbody id="table-body">
+                </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    let inventoryData = [];
+    let headers = [];
+    let itemColumnKey = "";
+    const COL_START = "Začátek";
+    const COL_END = "Konec";
+    const COL_SALE = "Prodej";
+    const COL_PRICE = "Cena";
+    const COL_REV = "Tržba";
+    const COL_NOTE = "Poznámka";
+
+    document.getElementById('file-upload').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, {type: 'array'});
+            const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+            
+            const json = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+            if(json.length === 0) return alert("Soubor je prázdný!");
+            headers = XLSX.utils.sheet_to_json(worksheet, { header: 1 })[0];
+            itemColumnKey = headers[0];
+            
+            inventoryData = json.map((item, index) => {
+                if (!item[itemColumnKey] || item[itemColumnKey].toString().trim() === "") return null;
+
+                let startQty = parseFloat(item[COL_START]) || 0;
+                let price = parseFloat(item[COL_PRICE]) || 0;
+                let endQty = item[COL_END] !== "" ? parseFloat(item[COL_END]) : "";
+
+                return {
+                    id: index,
+                    name: item[itemColumnKey],
+                    start: startQty,
+                    end: endQty,
+                    price: price,
+                    note: item[COL_NOTE] || ''
+                };
+            }).filter(item => item !== null);
+
+            generateTableDOM();
+            calculateTotalRevenue();
+            
+            document.getElementById('inventory-table').classList.remove('hidden');
+            document.getElementById('export-btn').classList.remove('hidden');
+        };
+        reader.readAsArrayBuffer(file);
+    });
+
+    function generateTableDOM() {
+        const thead = document.getElementById('table-head');
+        const tbody = document.getElementById('table-body');
+        
+        thead.innerHTML = `<tr>
+            <th>${itemColumnKey}</th>
+            <th>${COL_START}</th>
+            <th>${COL_END} (Zadej)</th>
+            <th>${COL_SALE}</th>
+            <th>${COL_PRICE}</th>
+            <th>${COL_REV}</th>
+            <th>${COL_NOTE}</th>
+        </tr>`;
+
+        tbody.innerHTML = '';
+
+        inventoryData.forEach((item) => {
+            let sale = 0;
+            let revenue = 0;
+
+            if (item.end !== "") {
+                sale = item.start - item.end;
+                revenue = Math.round(sale * item.price);
+            }
+
+            const saleStr = sale > 0 ? parseFloat(sale.toFixed(2)) : 0;
+            const revStr = revenue > 0 ? revenue + ' Kč' : '0 Kč';
+            const priceStr = parseFloat(item.price.toFixed(2)) + ' Kč';
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td style="font-weight: 500;">${item.name}</td>
+                <td>${item.start}</td>
+                <td class="bg-input-cell">
+                    <input type="number" step="any" class="qty-input" value="${item.end}" onfocus="this.select()" oninput="updateRowLive(${item.id}, this.value)">
+                </td>
+                <td id="sale-${item.id}" class="${sale > 0 ? 'text-positive' : ''}">${saleStr}</td>
+                <td>${priceStr}</td>
+                <td id="rev-${item.id}" class="${revenue > 0 ? 'text-positive' : ''}">${revStr}</td>
+                <td class="note-cell">${item.note}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function updateRowLive(id, value) {
+        const item = inventoryData.find(i => i.id === id);
+        if (!item) return;
+
+        let cleanValue = value.replace(',', '.');
+        item.end = cleanValue === "" ? "" : parseFloat(cleanValue);
+
+        let sale = 0;
+        let revenue = 0;
+
+        if (item.end !== "") {
+            sale = item.start - item.end;
+            revenue = Math.round(sale * item.price);
+        }
+
+        const saleCell = document.getElementById(`sale-${id}`);
+        const revCell = document.getElementById(`rev-${id}`);
+
+        const saleStr = sale > 0 ? parseFloat(sale.toFixed(2)) : 0;
+        const revStr = revenue > 0 ? revenue + ' Kč' : '0 Kč';
+
+        saleCell.innerText = saleStr;
+        saleCell.className = sale > 0 ? 'text-positive' : '';
+
+        revCell.innerText = revStr;
+        revCell.className = revenue > 0 ? 'text-positive' : '';
+
+        calculateTotalRevenue();
+    }
+
+    function calculateTotalRevenue() {
+        let totalRevenue = 0;
+        inventoryData.forEach(item => {
+            if (item.end !== "") {
+                const sale = item.start - item.end;
+                if (sale > 0) {
+                    totalRevenue += Math.round(sale * item.price);
+                }
+            }
+        });
+        document.getElementById('total-revenue').innerText = totalRevenue;
+    }
+
+    function exportData() {
+        const dataToExport = [];
+
+        const exportHeaders = [itemColumnKey, COL_START, COL_END, COL_SALE, COL_PRICE, COL_REV, COL_NOTE];
+        dataToExport.push(exportHeaders);
+        inventoryData.forEach(item => {
+            const sale = item.end !== "" ? item.start - item.end : 0;
+            const revenue = sale > 0 ? Math.round(sale * item.price) : 0;
+            
+            dataToExport.push([
+                item.name,
+                item.start,
+                item.end !== "" ? item.end : "",
+                sale > 0 ? parseFloat(sale.toFixed(2)) : 0,
+                item.price,
+                revenue,
+                item.note
+            ]);
+        });
+
+        const worksheet = XLSX.utils.aoa_to_sheet(dataToExport);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Inventura");
+
+        XLSX.writeFile(workbook, `Inventura_Hotovo_${new Date().toISOString().split('T')[0]}.xlsx`);
+    }
+</script>
+</body>
+</html>
