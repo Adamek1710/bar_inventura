@@ -4,132 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pokladní Inventura</title>
+    <link rel="stylesheet" href="style.css">
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
-    <style>
-        :root {
-            --primary: #2563eb;
-            --bg: #f8fafc;
-            --surface: #ffffff;
-            --text: #0f172a;
-            --border: #e2e8f0;
-            --success-bg: #dcfce7;
-            --success-text: #166534;
-            --highlight: #16a34a;
-        }
-        body {
-            font-family: system-ui, -apple-system, sans-serif;
-            background-color: var(--bg);
-            color: var(--text);
-            margin: 0;
-            padding: 2rem;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background: var(--surface);
-            padding: 2rem;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-        }
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 2px solid var(--border);
-            padding-bottom: 1rem;
-            margin-bottom: 2rem;
-            flex-wrap: wrap;
-            gap: 1rem;
-        }
-        .total-box {
-            background: var(--success-bg);
-            color: var(--success-text);
-            padding: 1rem 1.5rem;
-            border-radius: 8px;
-            font-size: 1.4rem;
-            font-weight: bold;
-            box-shadow: inset 0 0 0 1px rgba(22, 101, 52, 0.2);
-        }
-        .controls {
-            display: flex;
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-        }
-        input[type="file"] {
-            padding: 0.5rem;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            background: #f1f5f9;
-            font-size: 1rem;
-            cursor: pointer;
-        }
-        button {
-            background: var(--primary);
-            color: white;
-            border: none;
-            padding: 0.75rem 1.5rem;
-            border-radius: 6px;
-            font-weight: 600;
-            font-size: 1rem;
-            cursor: pointer;
-            transition: opacity 0.2s;
-        }
-        button:hover { opacity: 0.9; }
-        
-        .table-wrapper {
-            overflow-x: auto;
-            margin-top: 1rem;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        th, td {
-            padding: 0.75rem 1rem;
-            text-align: left;
-            border-bottom: 1px solid var(--border);
-        }
-        th {
-            background-color: #f1f5f9;
-            font-weight: 600;
-            white-space: nowrap;
-        }
-        .qty-input {
-            width: 90px;
-            padding: 0.5rem;
-            border: 2px solid var(--primary);
-            border-radius: 6px;
-            font-size: 1rem;
-            text-align: center;
-            font-weight: bold;
-            background-color: #fff;
-        }
-        .qty-input:focus {
-            outline: none;
-            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
-        }
-
-        input::-webkit-outer-spin-button,
-        input::-webkit-inner-spin-button {
-            -webkit-appearance: none;
-            margin: 0;
-        }
-        input[type=number] {
-            -moz-appearance: textfield;
-            appearance: textfield;
-        }
-
-        .text-positive { color: var(--highlight); font-weight: bold; }
-        .bg-input-cell { background-color: #eff6ff; text-align: center; width: 120px; }
-        .hidden { display: none; }
-        .note-cell { font-size: 0.85rem; color: #64748b; max-width: 150px; }
-    </style>
 </head>
 <body>
 
-<div class="container">
+<div id="login-screen">
+    <h2>Pokladní Systém</h2>
+    <input type="password" id="password-input" placeholder="Zadejte přístupové heslo" onkeypress="handleKeyPress(event)">
+    <div id="login-error" class="error-msg">Nesprávné heslo, zkuste to znovu.</div>
+    <button onclick="checkPassword()">Vstoupit do inventury</button>
+</div>
+
+<div id="main-app" class="container hidden">
     <div class="header">
         <h1>Pokladní Inventura</h1>
         <div class="total-box">
@@ -140,6 +27,7 @@
     <div class="controls">
         <input type="file" id="file-upload" accept=".csv, .xlsx, .xls" />
         <button id="export-btn" class="hidden" onclick="exportData()">Uložit inventuru a stáhnout Excel</button>
+        <button id="email-btn" class="hidden btn-email" onclick="sendEmailOverview()">Poslat přehled e-mailem</button>
     </div>
 
     <div class="table-wrapper">
@@ -153,15 +41,31 @@
 </div>
 
 <script>
+    const APP_PASSWORD = "admin123";
+
     let inventoryData = [];
     let headers = [];
-    let itemColumnKey = "";
+    let itemColumnKey = ""; 
+
     const COL_START = "Začátek";
     const COL_END = "Konec";
     const COL_SALE = "Prodej";
     const COL_PRICE = "Cena";
     const COL_REV = "Tržba";
     const COL_NOTE = "Poznámka";
+
+    function checkPassword() {
+        const input = document.getElementById('password-input').value;
+        const errorDiv = document.getElementById('login-error');
+        
+        if (input === APP_PASSWORD) {
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('main-app').classList.remove('hidden');
+        } else {
+            errorDiv.style.display = 'block';
+            document.getElementById('password-input').value = '';
+        }
+    }
 
     document.getElementById('file-upload').addEventListener('change', function(e) {
         const file = e.target.files[0];
@@ -175,15 +79,22 @@
             
             const json = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
             if(json.length === 0) return alert("Soubor je prázdný!");
+
             headers = XLSX.utils.sheet_to_json(worksheet, { header: 1 })[0];
-            itemColumnKey = headers[0];
+            itemColumnKey = headers[0]; 
             
             inventoryData = json.map((item, index) => {
                 if (!item[itemColumnKey] || item[itemColumnKey].toString().trim() === "") return null;
 
-                let startQty = parseFloat(item[COL_START]) || 0;
+                let startQty = 0;
+                if (item[COL_END] !== undefined && item[COL_END] !== "") {
+                    startQty = parseFloat(item[COL_END]) || 0;
+                } else {
+                    startQty = parseFloat(item[COL_START]) || 0;
+                }
+
+                let endQty = ""; 
                 let price = parseFloat(item[COL_PRICE]) || 0;
-                let endQty = item[COL_END] !== "" ? parseFloat(item[COL_END]) : "";
 
                 return {
                     id: index,
@@ -200,6 +111,7 @@
             
             document.getElementById('inventory-table').classList.remove('hidden');
             document.getElementById('export-btn').classList.remove('hidden');
+            document.getElementById('email-btn').classList.remove('hidden');
         };
         reader.readAsArrayBuffer(file);
     });
@@ -294,9 +206,9 @@
 
     function exportData() {
         const dataToExport = [];
-
         const exportHeaders = [itemColumnKey, COL_START, COL_END, COL_SALE, COL_PRICE, COL_REV, COL_NOTE];
         dataToExport.push(exportHeaders);
+        
         inventoryData.forEach(item => {
             const sale = item.end !== "" ? item.start - item.end : 0;
             const revenue = sale > 0 ? Math.round(sale * item.price) : 0;
@@ -317,6 +229,64 @@
         XLSX.utils.book_append_sheet(workbook, worksheet, "Inventura");
 
         XLSX.writeFile(workbook, `Inventura_Hotovo_${new Date().toISOString().split('T')[0]}.xlsx`);
+    }
+
+    function sendEmailOverview() {
+        const todayDate = new Date().toLocaleDateString('cs-CZ');
+        const subject = todayDate;
+
+        const dataToExport = [];
+        const exportHeaders = [itemColumnKey, COL_START, COL_END, COL_SALE, COL_PRICE, COL_REV, COL_NOTE];
+        dataToExport.push(exportHeaders);
+        
+        inventoryData.forEach(item => {
+            const sale = item.end !== "" ? item.start - item.end : 0;
+            const revenue = sale > 0 ? Math.round(sale * item.price) : 0;
+            
+            dataToExport.push([
+                item.name,
+                item.start,
+                item.end !== "" ? item.end : "",
+                sale > 0 ? parseFloat(sale.toFixed(2)) : 0,
+                item.price,
+                revenue,
+                item.note
+            ]);
+        });
+
+        const worksheet = XLSX.utils.aoa_to_sheet(dataToExport);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Inventura");
+        
+        const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+        const excelBlob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const fileName = `Inventura_${new Date().toISOString().split('T')[0]}.xlsx`;
+
+        const formData = new FormData();
+        formData.append("access_key", "WEB3FORMS_KEY"); // TODO
+        formData.append("subject", subject);
+        formData.append("message", "");
+        formData.append("attachment", excelBlob, fileName);
+        
+        fetch('https://api.web3forms.com/submit', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert("Odesláno");
+            } else {
+                alert("Chyba");
+            }
+        })
+        .catch(() => {
+            alert("Chyba");
+        });
+    }
+
+    function handleKeyPress(e) {
+        if (e.key === 'Enter') checkPassword();
     }
 </script>
 </body>
