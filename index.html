@@ -263,26 +263,19 @@
         const fileName = `Inventura_${new Date().toISOString().split('T')[0]}.xlsx`;
 
         const formData = new FormData();
-        formData.append("access_key", "WEB3FORMS_KEY"); // TODO
         formData.append("subject", subject);
         formData.append("message", "");
         formData.append("attachment", excelBlob, fileName);
         
-        fetch('https://api.web3forms.com/submit', {
+        fetch('https://forminit.com/f/z3eppbdmnbb', {
             method: 'POST',
             body: formData
         })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alert("Odesláno");
-            } else {
-                alert("Chyba");
-            }
+        .then(response => {
+            if (response.ok) alert("Odesláno úspěšně!");
+            else alert("Chyba při odesílání.");
         })
-        .catch(() => {
-            alert("Chyba");
-        });
+        .catch(() => alert("Síťová chyba."));
     }
 
     function handleKeyPress(e) {
