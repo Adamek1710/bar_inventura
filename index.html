@@ -26,8 +26,10 @@
 
     <div class="controls">
         <input type="file" id="file-upload" accept=".csv, .xlsx, .xls" />
+        <button id="load-saved-btn" class="hidden" style="background-color: #e67e22;" onclick="loadSavedInventory()">Načíst minulou inventuru</button>
         <button id="export-btn" class="hidden" onclick="exportData()">Uložit inventuru a stáhnout Excel</button>
         <button id="email-btn" class="hidden btn-email" onclick="sendEmailOverview()">Poslat přehled e-mailem</button>
+        <button id="save-local-btn" class="hidden" style="background-color: #27ae60;" onclick="saveInventoryLocally()">Uložit pro příště</button>
     </div>
 
     <div class="table-wrapper">
@@ -61,6 +63,7 @@
         if (input === APP_PASSWORD) {
             document.getElementById('login-screen').classList.add('hidden');
             document.getElementById('main-app').classList.remove('hidden');
+            checkSavedInventory();
         } else {
             errorDiv.style.display = 'block';
             document.getElementById('password-input').value = '';
@@ -112,6 +115,8 @@
             document.getElementById('inventory-table').classList.remove('hidden');
             document.getElementById('export-btn').classList.remove('hidden');
             document.getElementById('email-btn').classList.remove('hidden');
+            document.getElementById('save-local-btn').classList.remove('hidden');
+            document.getElementById('load-saved-btn').classList.add('hidden');
         };
         reader.readAsArrayBuffer(file);
     });
@@ -297,6 +302,56 @@
             emailBtn.innerText = originalText;
             emailBtn.disabled = false;
         });
+    }
+
+    function checkSavedInventory() {
+        const saved = localStorage.getItem('savedInventory');
+        if (saved) {
+            document.getElementById('load-saved-btn').classList.remove('hidden');
+        }
+    }
+
+    function saveInventoryLocally() {
+        const dataToSave = {
+            itemColumnKey: itemColumnKey,
+            headers: headers,
+            data: inventoryData
+        };
+        localStorage.setItem('savedInventory', JSON.stringify(dataToSave));
+        alert("Inventura byla uložena do prohlížeče. Příští týden ji můžete rovnou načíst.");
+    }
+
+    function loadSavedInventory() {
+        const saved = localStorage.getItem('savedInventory');
+        if (!saved) return;
+        
+        const parsed = JSON.parse(saved);
+        itemColumnKey = parsed.itemColumnKey;
+        headers = parsed.headers;
+        
+        inventoryData = parsed.data.map(item => {
+            let newStart = item.start;
+            if (item.end !== "" && item.end !== null && item.end !== undefined) {
+                newStart = parseFloat(item.end);
+            }
+            return {
+                id: item.id,
+                name: item.name,
+                start: newStart,
+                end: "",
+                price: item.price,
+                note: item.note
+            };
+        });
+
+        generateTableDOM();
+        calculateTotalRevenue();
+        
+        document.getElementById('inventory-table').classList.remove('hidden');
+        document.getElementById('export-btn').classList.remove('hidden');
+        document.getElementById('email-btn').classList.remove('hidden');
+        document.getElementById('save-local-btn').classList.remove('hidden');
+        document.getElementById('load-saved-btn').classList.add('hidden');
     }
 
     function handleKeyPress(e) {
